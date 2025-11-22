@@ -30,13 +30,13 @@ typedef struct
     // 电控发送的信息
     float yaw;             // 当前车云台的yaw角，单位为弧度制
     float pitch;           // 当前车云台的pitch角，单位为弧度制
-    uint8_t status;
-    uint8_t is_far;         // 状态位，/5==0自己为红色，/5==0自己为蓝色，%5==0为自瞄，%5==1为小符，%5==3为大符
+    uint8_t is_far;        // 是否为远距离打击模式
+    uint8_t status;        // 状态位，/5==0自己为红色，/5==0自己为蓝色，%5==0为自瞄，%5==1为小符，%5==3为大符
     uint8_t armor_flag;    // 目标车编号
-    bool is_back;
+    bool allround;         // 是否全向攻击
     float latency;         // 延迟，单位为毫秒
     float x_c;             // 目标中心点x坐标，单位为毫米
-    float v_x;             
+    float v_x;             // 目标速度x分量，单位为毫米每秒
     float y_c;             // 目标中心点y坐标，单位为毫米
     float v_y;             // 目标速度y分量，单位为毫米每秒
     float z1;              // 目标高度，单位为毫米
@@ -48,42 +48,63 @@ typedef struct
     uint16_t crc;
     uint8_t tail; // 0x4C
 
-} MessData_AutoAim;
+} MessData;
 #pragma pack()
 
 #pragma pack(1)
-typedef struct {  // 打符结构体
+typedef struct {            // 都使用朴素机器人坐标系,前x,左y,上z
+  uint8_t  frame_header;    // 8位 帧头 0x72
+  uint8_t  eSentryState;    // 8位 当前状态
+  uint8_t  sentry_command;  // 8位 命令
+  uint8_t  color;           // 8位 机器人颜色（0=RED, 1=BLUE）
+  uint8_t  eSentryEvent;    // 8位 事件
+  uint16_t hp_remain;       // 16位 剩余生命值
+  uint16_t bullet_remain;   // 16位 剩余子弹量
+  float    time_remain;     // 32位 剩余时间，单位秒
+  float    time_test;       // 32位 测试时间，单位秒
+  uint32_t reserve_2 : 16;  // 16位 保留
+  uint32_t reserve_3 : 32;  // 32位 保留
+  uint32_t reserve_4 : 32;  // 32位 保留
+  uint32_t reserve_5 : 32;  // 32位 保留
+  uint32_t reserve_6 : 32;  // 32位 保留
+  uint32_t reserve_7 : 32;  // 32位 保留
+  uint32_t reserve_8 : 32;  // 32位 保留
+  uint32_t reserve_9 : 32;  // 32位 保留
+  uint32_t reserve_10 : 32; // 32位 保留
+  uint32_t reserve_11 : 32; // 32位 保留
+  uint32_t reserve_12 : 32; // 32位 保留
+  uint32_t reserve_13 : 32; // 32位 保留
+  uint8_t  frame_tail;      // 帧尾 0x21
+} marketCommand_t;
+#pragma pack()
 
-  uint8_t head; // 0x71
-  // 电控发送的信息
-  float yaw;               // 当前车云台的yaw角，单位为弧度制
-  float pitch;             // 当前车云台的pitch角，单位为弧度制
-  uint8_t status;          // 状态位，/5==0自己为红色，/5==0自己为蓝色，%5==0为自瞄，%5==1为小符，%5==3为大符
-  uint16_t bullet_v;       // 上一次发射的弹速，单位为米每秒
-  uint8_t empty0;
-  uint32_t predict_time;   // 预测时间，单位为毫秒
-  float empty1;
-  float empty2;
-  float empty3;
-  float empty4;
-  float empty5;
-  float empty6;
-  float empty7;
-  float empty8;
-  float empty9;
-  float empty10;
-  float send_yaw;   // 目标姿态yaw角，单位为弧度制
-  float send_pitch; // 目标姿态pitch角，单位为弧度制
-  uint16_t crc;
-  uint8_t tail; // 0x4C
-
-} MessData_WM;
+#pragma pack(1)
+typedef struct {           // 都使用朴素机器人坐标系,前x,左y,上z
+  uint8_t  frame_header;   // 8位帧头 0x72
+  float    x_speed;        // x 方向速度
+  float    y_speed;        // y 方向速度
+  float    x_current;      // 当前 x 坐标
+  float    y_current;      // 当前 y 坐标
+  float    x_target;       // 当前 x 坐标
+  float    y_target;       // 当前 y 坐标
+  float    yaw_current;    // 当前云台偏航角
+  float    yaw_desired;    // 期望云台偏航角
+  uint8_t  sentry_region;  // 8位哨兵区域
+  float    time_test;      // 32位测试时间，单位秒
+  uint32_t reserve_2 : 8;  // 8位保留
+  uint32_t reserve_3 : 32; // 32位保留
+  uint32_t reserve_4 : 32; // 32位保留
+  uint32_t reserve_5 : 32; // 32位保留
+  uint32_t reserve_6 : 32; // 32位保留
+  uint32_t reserve_7 : 32; // 32位保留
+  uint32_t reserve_8 : 32; // 32位保留
+  uint8_t  frame_tail;     // 帧尾 0x4D,填充到 64字节，保持帧尾为最后一字节
+} navInfo_t;
 #pragma pack()
 
 typedef union
 {
-    MessData_AutoAim message;
-    MessData_WM messageWM;
+    MessData message;
     char data[64];
 } Translator;
 
@@ -138,6 +159,7 @@ struct UnsolvedArmor
   std::string number;
   float confidence;
   std::string classfication_result;
+  bool isApriltag = false;
 };
   // namespace rm_auto_aim
 
@@ -153,6 +175,16 @@ struct Armor
     cv::Mat rVec;
     double yaw;
 };
+struct WMBlade 
+{
+  // cv::Point2f apex[4];
+  // cv::Rect_<float> rect;
+  // int cls;
+  int color;
+  // int area;
+  // float prob;
+  std::vector<cv::Point2f> apex;
+};
 struct Armors
 {
     std::deque<Armor> armors;
@@ -167,15 +199,15 @@ struct ArmorObject
     float prob;
     std::vector<cv::Point2f> pts;
 };
-struct WMBlade 
+struct WMObject
 {
-  // cv::Point2f apex[4];
-  // cv::Rect_<float> rect;
-  // int cls;
-  int color;
-  // int area;
-  // float prob;
-  std::vector<cv::Point2f> apex;
+    cv::Point2f apex[4];
+    cv::Rect_<float> rect;
+    int cls;
+    int color;
+    int area;
+    float prob;
+    std::vector<cv::Point2f> pts;
 };
 enum COLOR
 {
@@ -235,7 +267,7 @@ struct GlobalParam
     int cam_index = 0;
     //===曝光时间===//
     MV_CAM_EXPOSURE_AUTO_MODE enable_auto_exp = MV_EXPOSURE_AUTO_MODE_OFF;
-    float energy_exp_time = 200.0F;         // 能量机关曝光时间
+    float energy_exp_time = 20000.0F;         // 能量机关曝光时间
     float armor_exp_time = 290.0F;          // 装甲板曝光时间
     float blue_exp_time = 1000;
     float red_exp_time = 1000;
@@ -303,7 +335,7 @@ struct GlobalParam
     double max_lost_frame = 10;
     // 卡尔曼滤波相关参数
     double s2qxyz = 250.0;           // 位置转移噪声
-    double s2qyaw = 90.0;            // 角度转移噪声
+    double s2qyaw = 10.0;            // 角度转移噪声
     double s2qr = 250.0;             // 半径转移噪声
     double r_xy_factor = 0.032;  
     double r_z = 1e-7; 
@@ -312,95 +344,74 @@ struct GlobalParam
     double s2p0yaw = 1;
     double r_initial = 300;
 
+    double s2qxyz_outpost = 250.0;           // 位置转移噪声
+    double s2qyaw_outpost = 10.0;            // 角度转移噪声
+    double r_xy_factor_outpost = 0.032;  
+    double r_z_outpost = 1e-7; 
+
     double r_yaw_corrected = 1;
     double resize = 1;
-
-    // === 新增：用于转速突变判定和赋值 ===
-    double yaw_speed_small = 0.5;   // 小阈值
-    double yaw_speed_large = 6.0;    // 赋予的较大初始值
 
     double small_armor_a = 67.5; // 小装甲板的长
     double small_armor_b = 28.5; // 小装甲板的宽
     double big_armor_a = 112.5;  // 大装甲板的长
     double big_armor_b = 28.5;  // 大装甲板的宽
 
-    //===============打符识别部分==============//
+    //===新加的===//
+    // int realy_mid = 720;
+    // double camera2shootBias = 0.0;
+    // double pzy = 0.0;
 
-    //====取图蒙板参数====//
-    // 蒙板左上角相对x坐标倍数，范围0～1，TL即Left Top
-    float mask_TL_x = 0.125F;
-    // 蒙板左上角相对y坐标倍数，范围0～1，TL即Left Top
-    float mask_TL_y = 0.0F;
-    // 蒙板矩形相对宽度倍数，范围0～1-mask_TL_x
-    float mask_width = 0.5F;
-    // 蒙板矩形相对高度倍数，范围0～1-mask_TL_y
-    float mask_height = 1.0F;
+    // int binary_thres = 100;
 
-    //====HSV二值化参数====//
-    int hmin = 32;  //<! l第一个最小值  84
-    int hmax = 255; //<! l第一个最大值   101
-    int smin = 0;   //<! s最小值   36
-    int smax = 255; //<! s最大值
-    int vmin = 0;   //<! v最小值   46
-    int vmax = 255; //<! v最大值
-    int e_hmin = 0;
-    int e_hmax = 20;
-    int e_smin = 35;
-    int e_smax = 255;
-    int e_vmin = 180;
-    int e_vmax = 255;
-    //====滤波开关====//
-    int switch_gaussian_blur = ON;
-
-    //====UI开关====//
-    int switch_UI_contours = ON;
-    int switch_UI_areas = ON;
-    int switch_UI = ON;
-
-    //===============打符识别部分==============//
-
+    // GlobalParam(){
+    //     initGlobalParam(BLUE);
+    // }
     int circularityThreshold = 45;
-    int medianBlurSize = 3;
-    int medianBlurSize_1 = 3;
-    int debug = 0;
-    int dilationSize = 7;
-    int dilationSize_1 = 7;
-    int erosionSize = 3;
-    int erosionSize_1 = 3;
-    int thresholdValue = 108;
-    int thresholdValue_1 = 108;
-    int thresholdValueBlue = 160;
-    int thresholdValueBlue_1 = 160;
-    int thresholdValue_for_roi = 80;
-    int rect_area_threshold = 2000;
-    int circle_area_threshold = 50;
-  
-    int target_circle_area_min = 8000;
-    int target_circle_area_max = 20000;
-    int R_area_min = 800;
-    int R_area_max = 2200;
-  
-    int length_width_ratio_threshold = 3;
-    int minContourArea = 200;
-  
-    //===============打符Identify==============//
-    int list_size = 280;
-    double d_Radius = 100;
-    double d_P1P3 = 100;
-    double d_RP2 = 100;
-  
-    int gap = 0;
-    int gap_control = 1;
-  
-    double tx_cam2cloud = 0;
-    double tx_cam2cloud_1 = 0;
-    double ty_cam2cloud = 0;
-    double ty_cam2cloud_1 = 0;
-    double tz_cam2cloud = 0;
-    double tz_cam2cloud_1 = 0;
-  
-    double delta_t = 0.10;
-  
+  int medianBlurSize = 3;
+  int medianBlurSize_1 = 3;
+  int debug = 0;
+  int dilationSize = 7;
+  int dilationSize_1 = 7;
+  int erosionSize = 3;
+  int erosionSize_1 = 3;
+  int thresholdValue = 108;
+  int thresholdValue_1 = 108;
+  int thresholdValueBlue = 160;
+  int thresholdValueBlue_1 = 160;
+  int thresholdValue_for_roi = 80;
+  int rect_area_threshold = 2000;
+  int circle_area_threshold = 50;
+
+  int target_circle_area_min = 8000;
+  int target_circle_area_max = 20000;
+  int R_area_min = 800;
+  int R_area_max = 2200;
+
+  int length_width_ratio_threshold = 3;
+  int minContourArea = 200;
+
+  //===============打符Identify==============//
+  int list_size = 280;
+  double d_Radius = 100;
+  double d_P1P3 = 100;
+  double d_RP2 = 100;
+
+  int gap = 0;
+  int gap_control = 1;
+
+  double tx_cam2cloud = 0;
+  double tx_cam2cloud_1 = 0;
+  double ty_cam2cloud = 0;
+  double ty_cam2cloud_1 = 0;
+  double tz_cam2cloud = 0;
+  double tz_cam2cloud_1 = 0;
+
+  double delta_t = 0.10;
+
+
+    
+
     void initGlobalParam(const int color);
     void saveGlobalParam();
 };

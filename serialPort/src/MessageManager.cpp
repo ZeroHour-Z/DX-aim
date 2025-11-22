@@ -40,7 +40,11 @@ MessageManager::MessageManager(GlobalParam &gp)
     this->now_time = 0;
     this->n_time = 0;
     this->start_time = 0;
-    std::string video_address = "../video/blue/v1.avi";
+    std::string video_address = "../video/v1.avi";
+
+    this->vision_size = 64;
+    this->nav_size = 64;
+
 #ifdef VIRTUALGRAB
     this->capture.open(video_address);
     this->totalFrames = capture.get(cv::CAP_PROP_FRAME_COUNT);
@@ -91,47 +95,90 @@ void MessageManager::FakeMessage(Translator &ts)
     MessageManager::UpdateCrc(ts, 61);
     return;
 }
-void MessageManager::ChangeBigArmor(Translator &ts)
-{
-    gp->armorStat = ts.message.armor_flag;
-    int tmp = gp->armorStat;
-    for (int i = 5; i > 2; i--)
-    {
-        gp->isBigArmor[i] = tmp % 2;
-        tmp /= 2;
-    }
-}
+
 void MessageManager::read(Translator &ts, SerialPort &serialPort)
 {
     int len = 0;
 #ifndef NOPORT
     this->message_lock.lock();
-    int count=0;
+    int count = 0;
     // 开始读取串口信息，存储在临时文件中，这样可以快速反复读取，避免串口中信息来不及读取导致堆积
     while (1)
     {
-        if (count>120) std::exit(-1);
+        if (count > 120)
+            std::exit(-1);
         len = serialPort.Read(ts.data, 99);
 
         if (len == 64)
         {
             usleep(100);
-
             break;
         }
 #ifdef THREADANALYSIS
-    printf("len1 is %d\n", len);
-    printf("status1 is %d\n", ts.message.status);
+        printf("len1 is %d\n", len);
+        printf("status1 is %d\n", ts.message.status);
 #endif
-        if (len == -1 || len == 0) std::exit(-1); //csy 7_24 new added
+        if (len == -1 || len == 0)
+            std::exit(-1); // csy 7_24 new added
         count++;
-       // //std::cout << "wei: " << ts.messageWM.bullet_v << std::endl;
+        // //std::cout << "wei: " << ts.message.bullet_v << std::endl;
         usleep(1000);
     }
     this->message_lock.unlock();
     // 如果长度为-1，为error，也就是串口连接出现问题，退出程序，并依靠外部的脚本使程序重新启动
 
 #endif // NOPORT
+}
+
+void MessageManager::readBoth(MessData &m_data, marketCommand_t &n_data, SerialPort &serialPort)
+{
+    tcflush(serialPort.fd, TCIOFLUSH);
+    bool m_read(0), n_read(0);
+    uint8_t count = 0;
+    while (!m_read or !n_read)
+    {
+        char readBuffer[64];
+        int bytesRead = serialPort.Read(readBuffer, 64);
+        if (count++ > 6)
+        {
+            std::cerr << "Error: Can not get data with both head\n";
+            exit(-1);
+        }
+
+        if (bytesRead <= 0)
+        {
+            std::cerr << "Error: Failed to read from serial port." << std::endl;
+            count++;
+        }
+
+        auto head = int(readBuffer[0]);  // 获取头部
+        auto tail = int(readBuffer[63]); // 获取尾部
+#ifdef THREADANALYSIS
+        printf("len1 is %d\n", bytesRead);
+        printf("head1 is %d\n", head);
+#endif
+        // printf("size:%d head:%d\n", bytesRead, head);
+        if (head == 0x71)
+        {
+            if (bytesRead != 64)
+            {
+                std::cerr << "Error: Received packet with 0x71 head but size is not 64 bytes" << std::endl;
+                return;
+            }
+            std::memcpy(&m_data, readBuffer, sizeof(MessData));
+            m_read = 1;
+        }
+        else if (head == 0x72)
+        {
+            if (bytesRead > 64)
+            {
+                std::cerr << "Error: Received packet with 0x72 head but size is larger than max size 64" << std::endl;
+                return;
+            }
+            std::memcpy(&n_data, readBuffer, sizeof(marketCommand_t));
+            n_read = 1;
+        }
+    }
 }
 void MessageManager::write(Translator &ts, SerialPort &serialPort)
 {
@@ -141,6 +188,38 @@ void MessageManager::write(Translator &ts, SerialPort &serialPort)
     if (!serialPort.Write(ts.data, 64))
     {
         LOG_IF(INFO, gp->switch_INFO) << "write failed";
+    }
+}
+void MessageManager::writeBoth(MessData &m_data, navInfo_t &n_data, SerialPort &serialPort)
+{
+    m_data.head = 0x71;
+    m_data.tail = 0x4C;
+
+    std::unique_ptr<char[]> char_m_data(new char[this->vision_size]);
+    std::memcpy(char_m_data.get(), &m_data, this->vision_size);
+
+    if (!serialPort.Write(char_m_data.get(), this->vision_size))
+    {
+        printf("Fatal error: Write MessData failed\n");
+    }
+
+    if (n_data.frame_header != 0x72)
+    {
+        // if (n_data.frame_header == 0 and n_data.frame_tail == 0)
+        //     printf("No NavData\n");
+        // else
+        //     printf("NavData Error With Head %d Tail %d\n", n_data.frame_header, n_data.frame_tail);
+    }
+    else
+    {
+        n_data.frame_tail = 0x4D;
+        std::unique_ptr<char[]> char_n_data(new char[this->nav_size]);
+        std::memcpy(char_n_data.get(), &n_data, this->nav_size);
+
+        if (!serialPort.Write(char_n_data.get(), this->nav_size))
+        {
+            printf("Fatal error: Write NavData failed\n");
+        }
     }
 }
 int MessageManager::CheckCrc(Translator &ts, int len)
@@ -173,10 +252,10 @@ void MessageManager::initParam(int color)
 
     // 如果颜色是红色，gp读取红色对应的参数
     if (color == RED)
-        gp -> initGlobalParam(RED);
+        gp->initGlobalParam(RED);
     // 如果颜色是蓝色，gp读取蓝色对应的参数
     else if (color == BLUE)
-        gp ->initGlobalParam(BLUE);
+        gp->initGlobalParam(BLUE);
 }
 void MessageManager::getFrame(cv::Mat &pic, Translator translator)
 {
@@ -205,6 +284,7 @@ void MessageManager::recordFrame(cv::Mat &pic)
         frame_accum = 0;
         vw->release();
         delete vw;
+        std::string video_address = "../video/v1.avi";
         std::string output_address = "../video/";
         int idx = 1;
         int coder = cv::VideoWriter::fourcc('m', 'p', '4', 'v');
@@ -212,14 +292,14 @@ void MessageManager::recordFrame(cv::Mat &pic)
     }
     frame_accum++;
 }
-void MessageManager::ReadLogMessage(Translator &ts,GlobalParam &gp)
+void MessageManager::ReadLogMessage(Translator &ts, GlobalParam &gp)
 {
     LOG_IF(INFO, gp.switch_INFO) << "read successful";
     LOG_IF(INFO, gp.switch_INFO) << "当前pitch: " << ts.message.pitch;
     LOG_IF(INFO, gp.switch_INFO) << "当前yaw: " << ts.message.yaw;
     LOG_IF(INFO, gp.switch_INFO) << "当前状态: " << +ts.message.status;
 }
-void MessageManager::WriteLogMessage(Translator &ts,GlobalParam &gp)
+void MessageManager::WriteLogMessage(Translator &ts, GlobalParam &gp)
 {
     LOG_IF(INFO, gp.switch_INFO) << "write successful";
     LOG_IF(INFO, gp.switch_INFO) << "当前crc: " << ts.message.crc;

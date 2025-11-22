@@ -18,6 +18,7 @@
 #include <string>
 #include <vector>
 
+enum class ArmorsNum { NORMAL_4 = 4, BALANCE_2 = 2, OUTPOST_3 = 3 };
 
 class Tracker{
 public:
@@ -25,9 +26,8 @@ public:
     void track(std::vector<Armor> &armors_curr, Translator &ts, double dt);
     void draw(const std::vector<Armor> armors_curr = std::vector<Armor>());
     void calc_armor_back(std::vector<Armor> &armors, Translator &ts);
-    void kill();
-
 private:
+
     GlobalParam *gp;
     double dt;
     double r_xy_correction[4];
@@ -38,9 +38,8 @@ private:
     std::vector<int> number_list;
     std::vector<Armor> armors_pred;
     bool have_number[8] = {false};
-    // std::vector<bool> last_vyaw_near_zero; // 记录每个目标vyaw上次是否接近0
     int index = 0;
-    
+
     void refine_zVector(int ekf_id);
     void create_new_ekf(Armor &armor);
     // double cost_threshold;
@@ -57,12 +56,12 @@ private:
     VoidMatFunc u_q;        // Process noise covariance matrix
     VecMatFunc u_r;         // Measurement noise covariance matrix
     VecVecFunc nomolize_residual;  // Nomalize residual function
-
-    VecVecFunc f_outpose;           // State transition vector function
-    VecVecFunc h_outpose;           // Observation nonlinear vector function
-    VecMatFunc j_f_outpose;         // Jacobian of f()
-    VecMatFunc j_h_outpose;         // Jacobian of h()
-    VoidMatFunc u_q_outpose;        // Process noise covariance matrix
-    VecMatFunc u_r_outpose;         // Measurement noise covariance matrix
+    //前哨站
+    VecVecFunc f_outpost;           // State transition vector function
+    VecVecFunc h_outpost;           // Observation nonlinear vector function
+    VecMatFunc j_f_outpost;         // Jacobian of f()
+    VecMatFunc j_h_outpost;         // Jacobian of h()
+    VoidMatFunc u_q_outpost;        // Process noise covariance matrix
+    VecMatFunc u_r_outpost;         // Measurement noise covariance matrix
 };
 #endif // ARMOR_PROCESSOR__TRACKER_HPP_

@@ -40,6 +40,7 @@ Eigen::MatrixXd ExtendedKalmanFilter::predict()
 Eigen::MatrixXd ExtendedKalmanFilter::update(const Eigen::VectorXd & z)
 {
   H = jacobian_h(x_pri), R = update_R(z);
+  // if (P_pri.)
   K = P_pri * H.transpose() * (H * P_pri * H.transpose() + R).inverse();
   x_post = x_pri + K * nomolize_residual(z - h(x_pri));
   P_post = (I - K * H) * P_pri;

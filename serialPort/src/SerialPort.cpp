@@ -1,6 +1,7 @@
 // SerialPort.cpp              实现具体的串口类
 #define VIRTUALPORT
 #include "SerialPort.hpp"
+#include <sys/ioctl.h>
 
 // 波特率数组
 int SerialPort::m_BaudRateArr[] = {B115200, B57600, B9600, B38400, B19200,
@@ -144,7 +145,7 @@ bool SerialPort ::InitSerialPort(int BaudRate,
         fprintf(stderr, "unsupported parityBit\n");
         return false;
     }
-    m_Setting.c_iflag &=-(BRKINT | ICRNL |ISTRIP |IXON);
+    m_Setting.c_iflag &= -(BRKINT | ICRNL | ISTRIP | IXON);
     m_Setting.c_oflag &= ~OPOST;                          // 设置为原始输出模式
     m_Setting.c_lflag &= ~(ICANON | ECHO | ECHOE | ISIG); // 设置为原始输入模式
     /*所谓标准输入模式是指输入是以行为单位的，可以这样理解，输入的数据最开始存储在一个缓冲区里面（但并未真正发送出去），
@@ -179,6 +180,19 @@ bool SerialPort::CloseSerialPort()
     fd = -1;
 
     return true;
+}
+
+int SerialPort::AvailableBytes() const
+{
+    if (fd == -1)
+        return -1;
+    int bytes;
+    return ioctl(fd, FIONREAD, &bytes) == 0 ? bytes : -1;
+}
+
+bool SerialPort::IsOpen() const
+{
+    return fd != -1;
 }
 
 // 从串口读取数据

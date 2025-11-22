@@ -47,7 +47,7 @@ void Tracker::track(std::vector<Armor> &armors_curr, Translator &ts, double dt){
     armors_pred.clear();
     for (int i = 0; i < ekf_list.size(); i++){
         auto x = ekf_list[i].predict();
-        if (number_list[i] != 6){
+        if (number_list[i] != 5){
             armors_pred.push_back(calcArmor(x(0), x(2), x(4), x(7), x(9)));
             armors_pred.push_back(calcArmor(x(0), x(2), x(5), x(8), x(9) + M_PI/2));
             armors_pred.push_back(calcArmor(x(0), x(2), x(4), x(7), x(9) + M_PI));
@@ -89,56 +89,52 @@ void Tracker::track(std::vector<Armor> &armors_curr, Translator &ts, double dt){
         if (z_vector_list[i].norm() == 0){
             lost_frame_count[i]++;
             int max_lost_frame = gp->max_lost_frame;
-            if (number_list[i] == 6) max_lost_frame *= 3; // outpost
+            if (number_list[i] == 5) max_lost_frame *= 3; // outpost
             if (lost_frame_count[i] > max_lost_frame){
                 ekf_list.erase(ekf_list.begin() + i);
                 z_vector_list.erase(z_vector_list.begin() + i);
                 lost_frame_count.erase(lost_frame_count.begin() + i);
                 have_number[number_list[i]] = false;
                 number_list.erase(number_list.begin() + i);
-                // last_vyaw_near_zero.erase(last_vyaw_near_zero.begin() + i);
                 i--;
                 continue;
             }
         } else {
             lost_frame_count[i] = 0;
             refine_zVector(i);
-            if(number_list[i] != 6)ekf_list[i].update(z_vector_list[i]);
+            if(number_list[i] != 5)ekf_list[i].update(z_vector_list[i]);
             else{
                 ekf_list[i].update(z_vector_list[i].segment(0, 12));
                 ekf_list[i].get_X()(7) = OUTPOSE_R;
                 ekf_list[i].get_X()(5) = ekf_list[i].get_X()(4);
             }
-            // double &vyaw = ekf_list[i].get_X()(10);
-            // if (fabs(vyaw) > gp->yaw_speed_small && last_vyaw_near_zero[i]) {
-            //     vyaw = (vyaw > 0 ? 1 : -1) * gp->yaw_speed_large;
-            // }
-            // last_vyaw_near_zero[i] = (fabs(vyaw) < gp->yaw_speed_small);
         }
-        if (ekf_list[i].get_X()(7)<100 || ekf_list[i].get_X()(8)<100 || abs(ekf_list[i].get_X()(10)) > 20){
+        if (ekf_list[i].get_X()(7)<100 || ekf_list[i].get_X()(8)<100 || ekf_list[i].get_X()(7)>450 || ekf_list[i].get_X()(8)>450 || abs(ekf_list[i].get_X()(10)) > 20){
             ekf_list.erase(ekf_list.begin() + i);
             z_vector_list.erase(z_vector_list.begin() + i);
             lost_frame_count.erase(lost_frame_count.begin() + i);
             have_number[number_list[i]] = false;
             number_list.erase(number_list.begin() + i);
-            // last_vyaw_near_zero.erase(last_vyaw_near_zero.begin() + i);
             i--;
         }
     }
-
     if (ekf_list.size() > 0){
-        float min_dangle = INF;
-        for(int i = 0;i < ekf_list.size();i++){
+        float min_angle = INF;
+        for(int i = 0; i < ekf_list.size(); i++){
+            int num = number_list[i];
+            if(num == 1){
+                index = i;
+                break;
+            }
             auto x = ekf_list[i].get_X();
             float dangle = atan2(x(2),x(0)) - ts.message.yaw;
-            dangle = abs(atan2(sin(dangle),cos(dangle)));
-            if (ts.message.status %5 == 2 && number_list[i] == 1) dangle = 0;
-            if(dangle < min_dangle){
-                min_dangle = dangle;
+            dangle = abs(atan2(sin(dangle), cos(dangle)));
+            if(dangle < min_angle){
+                min_angle = dangle;
                 index = i;
             }
         }
-        auto x = ekf_list[index].get_X();
+        auto x = ekf_list[index].get_X();        
         ts.message.crc = 1;
         ts.message.armor_flag = number_list[index];
         ts.message.x_c = x(0);
@@ -147,6 +143,7 @@ void Tracker::track(std::vector<Armor> &armors_curr, Translator &ts, double dt){
         ts.message.v_y = x(3);
         ts.message.z1 = x(4);
         ts.message.z2 = x(5);
+        // ts.message.v_z = x(6);
         ts.message.r1 = x(7);
         ts.message.r2 = x(8);
         ts.message.yaw_a = x(9);
@@ -159,21 +156,13 @@ void Tracker::track(std::vector<Armor> &armors_curr, Translator &ts, double dt){
         ts.message.v_y = 0;
         ts.message.z1 = 0;
         ts.message.z2 = 0;
+        // ts.message.v_z = 0;
         ts.message.r1 = 0;
         ts.message.r2 = 0;
         ts.message.yaw_a = 0;
         ts.message.vyaw = 0;
         ts.message.crc = 0;
     }
-}
-
-void Tracker::kill(){
-    if (ekf_list.size() <= index) return;
-    ekf_list.erase(ekf_list.begin() + index);
-    z_vector_list.erase(z_vector_list.begin() + index);
-    lost_frame_count.erase(lost_frame_count.begin() + index);
-    have_number[number_list[index]] = false;
-    number_list.erase(number_list.begin() + index);
 }
 
 void Tracker::refine_zVector(int ekf_id){
@@ -183,7 +172,7 @@ void Tracker::refine_zVector(int ekf_id){
     Armor armor;
     r_xy_correction[0] = r_xy_correction[1] = r_xy_correction[2] = r_xy_correction[3] = 1;
     r_yaw_corrected = gp -> r_yaw;
-    if (number_list[ekf_id] != 6){
+    if (number_list[ekf_id] != 5){
         // 看不见的装甲板的位姿由能看见的装甲板估计
         if (z.segment(0, 4) != Eigen::VectorXd::Zero(4)){
             armor = calcArmor(xc, yc, z(2), sqrt(pow(z(0)-xc, 2) + pow(z(1)-yc, 2)), z(3) + M_PI);
@@ -241,7 +230,7 @@ void Tracker::refine_zVector(int ekf_id){
         else if (z.segment(8, 4) != Eigen::VectorXd::Zero(4)){
             armor = calcArmor(xc, yc, z(10), OUTPOSE_R, z(11) + M_PI / 3 *2);
             z.segment(0, 4) << armor.position(0), armor.position(1), armor.position(2), armor.yaw;
-            armor = calcArmor(xc, yc, z1, OUTPOSE_R, z(11) + M_PI / 3 *4);
+            armor = calcArmor(xc, yc, z(10), OUTPOSE_R, z(11) + M_PI / 3 *4);
             z.segment(4, 4) << armor.position(0), armor.position(1), armor.position(2), armor.yaw;
             r_xy_correction[0] *= 10;
             r_xy_correction[1] *= 10;
@@ -252,7 +241,7 @@ void Tracker::refine_zVector(int ekf_id){
 
 void Tracker::create_new_ekf(Armor &armor){
     if(have_number[armor.type]) return;
-    if(armor.type != 6){
+    if(armor.type != 5){
         Eigen::MatrixXd P0 = Eigen::MatrixXd::Identity(11, 11) * gp->s2p0xyr;
         P0(9, 9) = gp->s2p0yaw;
         Eigen::Vector3d c = calcArmor(armor.position(0), armor.position(1), armor.position(2), gp->r_initial, armor.yaw + M_PI).position; 
@@ -267,14 +256,13 @@ void Tracker::create_new_ekf(Armor &armor){
         armors_pred.push_back(calcArmor(x0(0), x0(2), x0(5), x0(8), x0(9) + M_PI/2));
         armors_pred.push_back(calcArmor(x0(0), x0(2), x0(4), x0(7), x0(9) + M_PI));
         armors_pred.push_back(calcArmor(x0(0), x0(2), x0(5), x0(8), x0(9) + 3*M_PI/2));
-        // last_vyaw_near_zero.push_back(true);
     }else{  // 前哨站
         Eigen::MatrixXd P0 = Eigen::MatrixXd::Identity(11, 11) * gp->s2p0xyr;
         P0(9, 9) = gp->s2p0yaw;
         Eigen::Vector3d c = calcArmor(armor.position(0), armor.position(1), armor.position(2), OUTPOSE_R, armor.yaw + M_PI).position; 
         Eigen::VectorXd x0(11);
         x0 << c(0), 0, c(1), 0, c(2), 0, 0, OUTPOSE_R, OUTPOSE_R, armor.yaw, 0;
-        ekf_list.push_back(ExtendedKalmanFilter(f_outpose, h_outpose, j_f_outpose, j_h_outpose, u_q_outpose, u_r_outpose, nomolize_residual, P0, x0));
+        ekf_list.push_back(ExtendedKalmanFilter(f_outpost, h_outpost, j_f_outpost, j_h_outpost, u_q_outpost, u_r_outpost, nomolize_residual, P0, x0));
         z_vector_list.push_back(Eigen::VectorXd::Zero(16));
         lost_frame_count.push_back(0);
         number_list.push_back(armor.type);
@@ -283,7 +271,6 @@ void Tracker::create_new_ekf(Armor &armor){
         armors_pred.push_back(calcArmor(x0(0), x0(2), x0(4), x0(7), x0(9) + M_PI/3*2));
         armors_pred.push_back(calcArmor(x0(0), x0(2), x0(4), x0(7), x0(9) + M_PI/3*4));
         armors_pred.push_back(Armor{0});
-        // last_vyaw_near_zero.push_back(true);
     }   
 }
 
@@ -331,7 +318,7 @@ void Tracker::calc_armor_back(std::vector<Armor> &armors, Translator &ts){
     if (ekf_list.size() == 0)return;
     auto x = ekf_list[index].get_X();
     double xc = x(0), yc = x(2), z1 = x(4), z2 = x(5), r1 = x(7), r2 = x(8), yaw = x(9);
-    if (number_list[index] == 6)
+    if (number_list[index] == 5)
         armors = {
             calcArmor(xc, yc, z1, r1, yaw),
             calcArmor(xc, yc, z1, r1, yaw + M_PI/3*2),
@@ -360,7 +347,7 @@ void Tracker::calc_armor_back(std::vector<Armor> &armors, Translator &ts){
         armor.position = rMat.inverse() * (armor.position - tVec);
         armor.center = cv::Point3f(armor.position(0), armor.position(1), armor.position(2));
         double yaw = - armor.yaw;
-        double pitch = (number_list[index] != 6 ? M_PI - (15 * M_PI / 180) : M_PI - (-15 * M_PI / 180));
+        double pitch = (number_list[index] != 5 ? M_PI - (15 * M_PI / 180) : M_PI - (-15 * M_PI / 180));
         Eigen::Matrix<double, 3, 3> mat_x;
         mat_x << double(1), double(0), double(0),
                  double(0), cos(pitch), -sin(pitch),
@@ -387,8 +374,6 @@ Tracker::Tracker(GlobalParam &gp){
         Eigen::VectorXd x_new = x;
         x_new(0) += x(1) * dt; // 更新xc
         x_new(2) += x(3) * dt; // 更新yc
-        // x_new(4) += x(6) * dt; // 更新z1
-        // x_new(5) += x(6) * dt; // 更新z2
         x_new(9) += x(10)* dt; // 更新yaw
         return x_new;
     };
@@ -523,20 +508,20 @@ Tracker::Tracker(GlobalParam &gp){
     };
 
     // 前哨站
-    f_outpose = [this](const Eigen::VectorXd &x)
+    f_outpost = [this](const Eigen::VectorXd &x)
     {
         // 更新状态：位置和速度
         Eigen::VectorXd x_new = x;
         x_new(7) = OUTPOSE_R;
-        x_new(8) = OUTPOSE_R;
-        if(x_new(10) > 2.2) x_new(10) = 0.8 * M_PI;
-        else if(x_new(10) < -2.2) x_new(10) = -0.8 * M_PI; 
+        x_new(8) = OUTPOSE_R;        
+        if(x_new(10) > 2.35) x_new(10) = 0.8 * M_PI;
+        else if(x_new(10) < -2.35) x_new(10) = -0.8 * M_PI;
         x_new(9) += x(10)* dt; // 更新yaw
         return x_new;
     };
 
     // 状态转移函数的雅可比矩阵
-    j_f_outpose = [this](const Eigen::VectorXd &)
+    j_f_outpost = [this](const Eigen::VectorXd &)
     {
         Eigen::MatrixXd f(11, 11);
         // clang-format off
@@ -557,7 +542,7 @@ Tracker::Tracker(GlobalParam &gp){
     };
 
     // 观测函数
-    h_outpose = [this](const Eigen::VectorXd &x)
+    h_outpost = [this](const Eigen::VectorXd &x)
     {
         Eigen::VectorXd z(12);
         double xc = x(0), yc = x(2), yaw = x(9), z_ = x(4), r = x(7);
@@ -582,7 +567,7 @@ Tracker::Tracker(GlobalParam &gp){
     };
 
     // 观测函数的雅可比矩阵
-    j_h_outpose = [](const Eigen::VectorXd &x)
+    j_h_outpost = [](const Eigen::VectorXd &x)
     {
         Eigen::MatrixXd h(12, 11);
         double yaw = x(9), r = x(7);
@@ -608,10 +593,10 @@ Tracker::Tracker(GlobalParam &gp){
     };
 
     // 过程噪声协方差矩阵 u_q_0
-    u_q_outpose = [this, &gp]()
+    u_q_outpost = [this, &gp]()
     {
         Eigen::MatrixXd q(11, 11);
-        double t{dt}, x{gp.s2qxyz}, y{gp.s2qyaw};
+        double t{dt}, x{gp.s2qxyz_outpost}, y{gp.s2qyaw_outpost};
         // 计算各种噪声参数
         double q_x_x{pow(t, 4) / 4 * x};
         double q_y_y{pow(t, 4) / 4 * y}, q_y_vy{pow(t, 3) / 2 * y}, q_vy_vy{pow(t, 2) * y};
@@ -632,13 +617,14 @@ Tracker::Tracker(GlobalParam &gp){
     };
 
     // 观测噪声协方差矩阵 u_r_0
-    u_r_outpose = [this, &gp](const Eigen::VectorXd &z)
+    u_r_outpost = [this, &gp](const Eigen::VectorXd &z)
     {
         Eigen::DiagonalMatrix<double, 12> r;
-        double xy = gp.r_xy_factor;
-        r.diagonal() << abs(xy * z[0]) * r_xy_correction[0],  abs(xy * z[1]) * r_xy_correction[0],  gp.r_z * 10, r_yaw_corrected * 10,
-                        abs(xy * z[4]) * r_xy_correction[1],  abs(xy * z[5]) * r_xy_correction[1],  gp.r_z * 10, r_yaw_corrected * 10,
-                        abs(xy * z[8]) * r_xy_correction[2],  abs(xy * z[9]) * r_xy_correction[2],  gp.r_z * 10, r_yaw_corrected * 10; // 定义观测噪声
+        double xy = gp.r_xy_factor_outpost;
+        
+        r.diagonal() << abs(xy * z[0]) * r_xy_correction[0],  abs(xy * z[1]) * r_xy_correction[0],  gp.r_z_outpost * 10, r_yaw_corrected * 10,
+                        abs(xy * z[4]) * r_xy_correction[1],  abs(xy * z[5]) * r_xy_correction[1],  gp.r_z_outpost * 10, r_yaw_corrected * 10,
+                        abs(xy * z[8]) * r_xy_correction[2],  abs(xy * z[9]) * r_xy_correction[2],  gp.r_z_outpost * 10, r_yaw_corrected * 10; // 定义观测噪声
         return r;
     };
 }

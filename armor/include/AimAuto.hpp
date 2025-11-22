@@ -6,6 +6,7 @@
 #include <camera.hpp>
 #include <chrono>
 #include <cstdint>
+#include <detector.hpp>
 #include <memory>
 #include <opencv2/core/types.hpp>
 #include <opencv2/highgui.hpp>
@@ -16,22 +17,20 @@
 #include <opencv2/video/video.hpp>
 #include <opencv2/core/eigen.hpp>
 #include <vector>
-#include<filter.hpp>
-#include "OpenvinoInfer.hpp"  // 添加这个包含以定义Object类型
-#include <memory>  // 添加这个包含以支持 std::unique_ptr
+
+#ifdef APRILTAG
+#include "ApriltagDetector.hpp"
+#endif
 
 class AimAuto
 {
 private:
     GlobalParam *gp;
+    Detector *detector;
     Tracker *tracker;
     Armor last_armor;
-    std::unique_ptr<OpenvinoInfer> inferer;  // 添加推理器作为成员变量
-    void pnp_solve(Object &armor, Translator &ts, cv::Mat &src, Armor &tar, int number);
+    void pnp_solve(UnsolvedArmor &armor, Translator &ts, cv::Mat &src, Armor &tar, int number);
     void draw_armor_back(cv::Mat &src, Armor &armor, int number, cv::Scalar color = cv::Scalar(255, 255, 255));
-    Filter vx_filter;
-    Filter vy_filter;
-    Filter vyaw_filter;
     void optimizeYawZ(
         const std::vector<cv::Point3f>& objPoints,
         const std ::vector<cv::Point2f>& imgPoints,
@@ -47,7 +46,7 @@ private:
 public:
     AimAuto(GlobalParam *gp);
     ~AimAuto();
-    void auto_aim(GlobalParam &gp, cv::Mat &src, Translator &ts, double dt);
+    void auto_aim(cv::Mat &src, Translator &ts, double dt,bool &have_armor);
 };
 
 

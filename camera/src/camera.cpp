@@ -1,13 +1,27 @@
+#include "MessageManager.hpp"
+#include "SerialPort.hpp"
 #include "camera.hpp"
+#include "globalParam.hpp"
+#include <AimAuto.hpp>
+#include <UIManager.hpp>
+#include <chrono>
+#include <cstdio>
+#include <cstdlib>
+#include <glog/logging.h>
+#include <monitor.hpp>
+#include <pthread.h>
+#include <ratio>
+#include <string>
+#include <unistd.h>
+#include <filesystem>
 
-Camera::Camera(GlobalParam &gp)
+Camera::Camera(GlobalParam &gp,std::string &serial_number)
 {
     // 对于Camera中的变量进行初始化
     this->nRet = MV_OK;
     this->handle = NULL;
     this->color = gp.color;
     this->attack_mode = ARMOR;
-    // this->pDataForRGB = (unsigned char *)malloc(1440 * 1080 * 4 + 2048);
     this->CvtParam = {0};
     this->stOutFrame = {0};
     this->frame_rate = {0};
@@ -24,8 +38,32 @@ Camera::Camera(GlobalParam &gp)
         printf("nDeviceNum == 0\n");
         exit(-1);
     }
+// 用序列号查找对应设备
+    int found_index = -1;
+    for (unsigned int i = 0; i < stDeviceList.nDeviceNum; ++i)
+    {
+        MV_CC_DEVICE_INFO* pInfo = stDeviceList.pDeviceInfo[i];
+        if (pInfo->nTLayerType == MV_USB_DEVICE)
+        {
+            MV_USB3_DEVICE_INFO* pUsbInfo = &(pInfo->SpecialInfo.stUsb3VInfo);
+            std::string sn((char*)pUsbInfo->chSerialNumber);
+            if (sn == serial_number)
+            {
+                found_index = i;
+                break;
+            }
+        }
+    }
+    if (found_index == -1)
+    {
+        printf("未找到指定序列号的相机\n");
+        exit(-1);
+    }
+
+    // 用找到的设备信息创建句柄
+    this->nRet = MV_CC_CreateHandle(&handle, stDeviceList.pDeviceInfo[found_index]);
     // 依照gp中的cam_index，设置句柄为设备列表中第cam_index个设备(存在第0个)
-    this->nRet = MV_CC_CreateHandle(&handle, stDeviceList.pDeviceInfo[gp.cam_index]);
+    // this->nRet = MV_CC_CreateHandle(&handle, stDeviceList.pDeviceInfo[gp.cam_index]);
     if (this->nRet != MV_OK)
     {
 #ifdef THREADANALYSIS
@@ -72,12 +110,12 @@ int Camera::start_camera(GlobalParam &gp)
     return 0;
 }
 
-int Camera::get_pic(cv::Mat *srcimg, GlobalParam &gp)
+int Camera::get_pic(cv::Mat *srcimg)
 {
+    // chrono::high_resolution_clock::time_point t1 = chrono::high_resolution_clock::now();
     this->nRet = MV_CC_GetImageBuffer(handle, &stOutFrame, 400);
     if (this->nRet != MV_OK)
-        if (nRet != -2147483641)
-            exit(-1);
+        exit(-1);
     cv::Mat temp;
     temp = cv::Mat(stOutFrame.stFrameInfo.nHeight, stOutFrame.stFrameInfo.nWidth, CV_8UC1, CvtParam.pSrcData = stOutFrame.pBufAddr);
     if (temp.empty() == 1)
@@ -93,6 +131,9 @@ int Camera::get_pic(cv::Mat *srcimg, GlobalParam &gp)
 #endif
         }
     }
+    // chrono::high_resolution_clock::time_point t2 = chrono::high_resolution_clock::now();
+    // auto duration = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count();
+    // printf("read   duration: %ld us\n", duration);
     return 0;
 }
 
@@ -138,6 +179,11 @@ int Camera::set_param_mult(GlobalParam &gp)
     return 0;
 }
 
+int Camera::set(int time){
+    this->nRet = MV_CC_SetExposureTime(this->handle,time);
+    return 0;
+}
+
 int Camera::change_color(int input_color, GlobalParam &gp)
 {
     this->color = input_color;
@@ -169,11 +215,11 @@ void Camera::init()
 
 void Camera::getFrame(cv::Mat &pic)
 {
-// 如果不是虚拟取流，先设置相机参数，之后取流
-// #ifdef DEBUGMODE
+    // 如果不是虚拟取流，先设置相机参数，之后取流
+    // #ifdef DEBUGMODE
     this->set_param_mult(*gp);
-// #endif
-    this->get_pic(&pic, *gp);
+    // #endif
+    this->get_pic(&pic);
     //====去畸变=====//
     // cv::Mat pic_undistort;
     // pic.copyTo(pic_undistort);

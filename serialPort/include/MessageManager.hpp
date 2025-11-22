@@ -25,21 +25,26 @@ private:
     uint32_t n_time;
     uint32_t start_time;
     int frame_record;
+    size_t vision_size;
+    size_t nav_size;
+
 public:
     MessageManager(GlobalParam &gp);
     ~MessageManager();
     void HoldMessage(Translator &ts);
     void FakeMessage(Translator &ts);
-    void ChangeBigArmor(Translator &ts);
     void read(Translator &ts, SerialPort &serialPort);
+    int AvailableBytes() const;
+    void readBoth(MessData &m_data, marketCommand_t &n_data, SerialPort &serialPort);
     void write(Translator &ts, SerialPort &serialPort);
+    void writeBoth(MessData &m_data, navInfo_t &n_data, SerialPort &serialPort);
     int CheckCrc(Translator &ts, int len);
     void UpdateCrc(Translator &ts, int len);
     void copy(Translator &src, Translator &dst);
     void initParam(int color);
-    void getFrame(cv::Mat &pic,Translator translator);
+    void getFrame(cv::Mat &pic, Translator translator);
     void recordFrame(cv::Mat &pic);
-    void ReadLogMessage(Translator &ts,GlobalParam &gp);
-    void WriteLogMessage(Translator &ts,GlobalParam &gp);
+    void ReadLogMessage(Translator &ts, GlobalParam &gp);
+    void WriteLogMessage(Translator &ts, GlobalParam &gp);
 };
 #endif //_MESSAGEMANAGER_HPP

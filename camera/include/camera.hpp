@@ -45,7 +45,7 @@ public:
      *
      * @param gp 从主函数传入的GlobalParam，从中读取参数，添加原因因架构，详见readme
      */
-    Camera(GlobalParam &);
+    Camera(GlobalParam &,std::string &);
     /**
      * @brief 相机析构函数，用于在结束进程时销毁句柄，释放内存
      *
@@ -79,7 +79,8 @@ public:
      * @param gp 从主函数传入的GlobalParam，从中读取参数，添加原因因架构，详见readme
      * @return int 返回为0则方法正常执行
      */
-    int get_pic(cv::Mat *srcimg, GlobalParam &);
+    int set(int time);
+    int get_pic(cv::Mat *srcimg);
     /**
      * @brief 改变颜色这一参数的函数
      *
